@@ -28,8 +28,7 @@ class User(db.Model):
 def hash_existing_passwords():
     users = User.query.all()
     for user in users:
-        # Check if the password is already hashed (assuming hashed passwords are longer than 20 characters)
-        if len(user.password) < 20:
+        if len(user.password) < 20:  # Assuming hashed passwords are longer than 20 characters
             print(f"Hashing password for user: {user.username}")
             user.password = generate_password_hash(user.password)
             db.session.add(user)
@@ -50,27 +49,40 @@ def login():
     if not username or not password:
         return jsonify({"error": "Username and password are required"}), 400
 
-    # Check if the user exists in the database
     user = User.query.filter_by(username=username).first()
-
-    if user is None:
-        print("Debug: User not found")  # Debugging statement
+    if user is None or not check_password_hash(user.password, password):
         return jsonify({"error": "Invalid username or password"}), 401
 
-    # Check password hash
-    password_match = check_password_hash(user.password, password)
-    print(f"Debug: Stored hash: {user.password}")  # Debugging statement
-    print(f"Debug: Provided password: {password}")  # Debugging statement
-    print(f"Debug: Password hash comparison result: {password_match}")  # Debugging statement
-
-    if not password_match:
-        print("Debug: Password did not match")  # Debugging statement
-        return jsonify({"error": "Invalid username or password"}), 401
-
-    print("Debug: Login successful")  # Debugging statement
     return jsonify({"message": "Login successful!", "username": username}), 200
 
+# Registration route to save a new user to the database
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.json.get('username')  # Use JSON for simplicity
+    password = request.json.get('password')
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    # Check if the username already exists
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        return jsonify({"error": "Username already exists"}), 400
+
+    hashed_password = generate_password_hash(password)
+    new_user = User(username=username, password=hashed_password)
+    db.session.add(new_user)
+
+    try:
+        db.session.commit()  # Commit the transaction
+        return jsonify({"message": "User registered successfully"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to register user: " + str(e)}), 500
+
+# Main entry point
 if __name__ == '__main__':
     with app.app_context():
-        hash_existing_passwords()
+        db.create_all()  # Ensure tables are created
+        hash_existing_passwords()  # Optionally hash existing passwords
     app.run(debug=True)
